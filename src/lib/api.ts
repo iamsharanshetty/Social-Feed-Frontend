@@ -56,19 +56,30 @@ export const registerUser = async (userData: RegisterRequest): Promise<User> => 
 };
 
 export const loginUser = async (credentials: LoginRequest): Promise<User> => {
-  const response = await fetch(`${API_BASE_URL}/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(credentials),
-  });
+  console.log('Attempting login to:', `${API_BASE_URL}/login`);
+  console.log('Login credentials:', credentials);
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(credentials),
+    });
+    
+    console.log('Login response status:', response.status);
+    console.log('Login response headers:', response.headers);
 
-  if (!response.ok) {
-    throw new ApiError(`Login failed: ${response.statusText}`, response.status);
+    if (!response.ok) {
+      throw new ApiError(`Login failed: ${response.statusText}`, response.status);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Login error:', error);
+    throw error;
   }
-
-  return response.json();
 };
 
 // Message API
