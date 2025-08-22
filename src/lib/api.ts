@@ -1,15 +1,17 @@
-const API_BASE_URL = 'http://localhost:8080';
+// Change this to match your Spring Boot backend URL
+const API_BASE_URL = 'http://localhost:8080'; // Remove '/api' prefix
 
 export interface User {
   id: number;
   username: string;
+  accountId: number; // Make this required since backend always returns it
 }
 
 export interface Message {
-  id: number;
+  messageId: number; // Backend uses messageId, not id
   messageText: string;
-  accountId: number;
-  postedBy?: string;
+  postedBy: number; // Backend uses postedBy, not accountId
+  timePostedEpoch: number;
 }
 
 export interface LoginRequest {
@@ -24,7 +26,7 @@ export interface RegisterRequest {
 
 export interface CreateMessageRequest {
   messageText: string;
-  accountId: number;
+  postedBy: number; // Changed from accountId to postedBy
 }
 
 export interface UpdateMessageRequest {
@@ -49,10 +51,22 @@ export const registerUser = async (userData: RegisterRequest): Promise<User> => 
   });
 
   if (!response.ok) {
+    if (response.status === 409) {
+      throw new ApiError('Username already exists', 409);
+    }
+    const errorText = await response.text();
     throw new ApiError(`Registration failed: ${response.statusText}`, response.status);
   }
 
-  return response.json();
+  const responseData = await response.json();
+  console.log('Registration response:', responseData);
+  
+  // Backend returns: { accountId: number, username: string, password: string }
+  return {
+    id: responseData.accountId,
+    username: responseData.username,
+    accountId: responseData.accountId
+  };
 };
 
 export const loginUser = async (credentials: LoginRequest): Promise<User> => {
@@ -69,13 +83,28 @@ export const loginUser = async (credentials: LoginRequest): Promise<User> => {
     });
     
     console.log('Login response status:', response.status);
-    console.log('Login response headers:', response.headers);
 
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new ApiError('Invalid username or password', 401);
+      }
+      const errorText = await response.text();
       throw new ApiError(`Login failed: ${response.statusText}`, response.status);
     }
 
-    return response.json();
+    // Backend should return JSON with user data
+    const userData = await response.json();
+    console.log('Login response data:', userData);
+    
+    // Backend returns: { accountId: number, username: string, password: string }
+    const user: User = {
+      id: userData.accountId,
+      username: userData.username,
+      accountId: userData.accountId
+    };
+    
+    console.log('Login successful, formatted user:', user);
+    return user;
   } catch (error) {
     console.error('Login error:', error);
     throw error;
@@ -90,36 +119,65 @@ export const getAllMessages = async (): Promise<Message[]> => {
     throw new ApiError(`Failed to fetch messages: ${response.statusText}`, response.status);
   }
 
-  return response.json();
+  const messages = await response.json();
+  console.log('Fetched messages:', messages);
+  return messages;
 };
 
-export const getMessageById = async (id: number): Promise<Message> => {
+export const getMessageById = async (id: number): Promise<Message | null> => {
   const response = await fetch(`${API_BASE_URL}/messages/${id}`);
 
   if (!response.ok) {
     throw new ApiError(`Failed to fetch message: ${response.statusText}`, response.status);
   }
 
-  return response.json();
+  const message = await response.json();
+  // Backend returns empty response if message not found
+  return message || null;
 };
 
 export const createMessage = async (messageData: CreateMessageRequest): Promise<Message> => {
-  const response = await fetch(`${API_BASE_URL}/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(messageData),
-  });
+  console.log('Creating message with data:', messageData);
+  
+  // Backend expects: { messageText: string, postedBy: number }
+  const payload = {
+    messageText: messageData.messageText,
+    postedBy: messageData.postedBy
+  };
+  
+  console.log('Sending payload to backend:', payload);
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  if (!response.ok) {
-    throw new ApiError(`Failed to create message: ${response.statusText}`, response.status);
+    console.log('Create message response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Create message error response:', errorText);
+      
+      if (response.status === 400) {
+        throw new ApiError('Invalid message data. Please check your message text and try again.', 400);
+      }
+      throw new ApiError(`Failed to create message: ${response.statusText}`, response.status);
+    }
+
+    const result = await response.json();
+    console.log('Message creation successful:', result);
+    return result;
+  } catch (error) {
+    console.error('Create message error:', error);
+    throw error;
   }
-
-  return response.json();
 };
 
-export const updateMessage = async (id: number, messageData: UpdateMessageRequest): Promise<Message> => {
+export const updateMessage = async (id: number, messageData: UpdateMessageRequest): Promise<number> => {
   const response = await fetch(`${API_BASE_URL}/messages/${id}`, {
     method: 'PATCH',
     headers: {
@@ -129,13 +187,17 @@ export const updateMessage = async (id: number, messageData: UpdateMessageReques
   });
 
   if (!response.ok) {
+    if (response.status === 400) {
+      throw new ApiError('Invalid message text or message not found', 400);
+    }
     throw new ApiError(`Failed to update message: ${response.statusText}`, response.status);
   }
 
-  return response.json();
+  // Backend returns number of rows affected (1 if successful)
+  return await response.json();
 };
 
-export const deleteMessage = async (id: number): Promise<void> => {
+export const deleteMessage = async (id: number): Promise<number> => {
   const response = await fetch(`${API_BASE_URL}/messages/${id}`, {
     method: 'DELETE',
   });
@@ -143,4 +205,18 @@ export const deleteMessage = async (id: number): Promise<void> => {
   if (!response.ok) {
     throw new ApiError(`Failed to delete message: ${response.statusText}`, response.status);
   }
+
+  // Backend returns number of rows affected (1 if deleted, 0 if not found)
+  const result = await response.text();
+  return result ? parseInt(result) : 0;
+};
+
+export const getMessagesByUser = async (accountId: number): Promise<Message[]> => {
+  const response = await fetch(`${API_BASE_URL}/accounts/${accountId}/messages`);
+
+  if (!response.ok) {
+    throw new ApiError(`Failed to fetch user messages: ${response.statusText}`, response.status);
+  }
+
+  return response.json();
 };

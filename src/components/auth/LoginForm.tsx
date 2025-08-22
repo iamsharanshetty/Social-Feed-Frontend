@@ -47,9 +47,22 @@ export const LoginForm = ({ onSwitchToRegister }: LoginFormProps) => {
         description: `Welcome back, ${user.username}!`,
       });
     } catch (error) {
+      console.error('Login error in form:', error);
+      let errorMessage = 'An error occurred during login';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Invalid username or password')) {
+          errorMessage = 'Invalid username or password. Please check your credentials.';
+        } else if (error.message.includes('Login failed')) {
+          errorMessage = 'Login failed. Please try again.';
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       toast({
         title: 'Login Failed',
-        description: error instanceof Error ? error.message : 'An error occurred during login',
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
