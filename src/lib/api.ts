@@ -1,5 +1,5 @@
 // Change this to match your Spring Boot backend URL
-const API_BASE_URL = 'http://localhost:8080'; // Remove '/api' prefix
+const API_BASE_URL = 'https://demo-deployment-latest-mt9h.onrender.com'; // Remove '/api' prefix
 
 export interface User {
   id: number;
